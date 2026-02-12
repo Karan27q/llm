@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - AI Chatbot{% endblock %}
+
+{% block extra_css %}
+<style>
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 20px;
+    height: 100%;
+  }
+
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    height: 100%;
+  }
+
+  .main-content {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .user-profile {
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent-color), #7c3aed);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    color: white;
+  }
+
+  .mode-card {
+    padding: 20px;
+    transition: transform 0.2s, border-color 0.2s;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    height: 100%;
+  }
+
+  .mode-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent-color);
+  }
+
+  .mode-icon {
+    font-size: 24px;
+    margin-bottom: 8px;
+  }
+
+  .modes-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 20px;
+  }
+
+  .conversation-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 500px;
+    overflow-y: auto;
+  }
+
+  .conversation-item {
+    padding: 12px 16px;
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid transparent;
+    transition: all 0.2s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .conversation-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .conv-info h4 {
+    font-size: 0.95rem;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+  }
+
+  .conv-info p {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+  }
+
+  @media (max-width: 768px) {
+    .dashboard-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="padding: 20px; height: calc(100vh - 40px);">
+  <div class="dashboard-grid">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="glass-panel user-profile">
+        <div class="avatar">{{ session.get('username', 'U')[0].upper() }}</div>
+        <div>
+          <h3 style="font-size: 1rem;">{{ session.get('username', 'User') }}</h3>
+          <a href="/logout" class="text-sm text-muted hover:text-white">Sign Out</a>
+        </div>
+      </div>
+
+      <div class="glass-panel" style="padding: 20px; flex: 1; display: flex; flex-direction: column;">
+        <h3 class="mb-4 text-secondary text-sm uppercase" style="letter-spacing: 0.5px;">Recent Chats</h3>
+        <div id="conversationList" class="conversation-list" style="flex: 1;">
+          <div class="text-center text-muted text-sm py-4">Loading...</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <div class="glass-panel" style="padding: 30px; height: 100%; overflow-y: auto;">
+        <h2 class="mb-4">Start New Conversation</h2>
+        <div class="modes-grid">
+          <div class="glass-panel mode-card" onclick="startChat('assistant')">
+            <div class="mode-icon">🤖</div>
+            <h3>Assistant</h3>
+            <p class="text-sm text-muted">Helpful AI for general tasks and questions.</p>
+          </div>
+          <div class="glass-panel mode-card" onclick="startChat('code_expert')">
+            <div class="mode-icon">💻</div>
+            <h3>Code Expert</h3>
+            <p class="text-sm text-muted">Programming help, debugging, and code explainers.</p>
+          </div>
+          <div class="glass-panel mode-card" onclick="startChat('tutor')">
+            <div class="mode-icon">🎓</div>
+            <h3>Tutor</h3>
+            <p class="text-sm text-muted">Learn new topics with step-by-step guidance.</p>
+          </div>
+          <div class="glass-panel mode-card" onclick="startChat('creative')">
+            <div class="mode-icon">✨</div>
+            <h3>Creative</h3>
+            <p class="text-sm text-muted">Brainstorming, storytelling, and creative writing.</p>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.addEventListener('DOMContentLoaded', loadConversations);
+
+  async function loadConversations() {
+    try {
+      const res = await fetch('/api/conversations');
+      const data = await res.json();
+      const list = document.getElementById('conversationList');
+
+      if (data.conversations.length === 0) {
+        list.innerHTML = '<div class="text-center text-muted text-sm py-4">No conversations yet</div>';
+        return;
+      }
+
+      list.innerHTML = data.conversations.map(conv => `
+                <div class="conversation-item">
+                    <a href="/chat/${conv.id}" class="conv-info" style="flex:1;">
+                        <h4>${conv.title}</h4>
+                        <p>${new Date(conv.updated_at).toLocaleDateString()}</p>
+                    </a>
+                    <button class="btn btn-ghost" onclick="deleteConversation(${conv.id})" style="padding: 4px 8px;">×</button>
+                </div>
+            `).join('');
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function startChat(mode) {
+    try {
+      const res = await fetch('/api/conversation/new', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode })
+      });
+      const data = await res.json();
+      if (data.success) {
+        window.location.href = `/chat/${data.conversation_id}`;
+      }
+    } catch (e) {
+      alert('Failed to start chat');
+    }
+  }
+
+  async function deleteConversation(id) {
+    if (!confirm('Delete this conversation?')) return;
+    try {
+      await fetch(`/api/conversation/${id}`, { method: 'DELETE' });
+      loadConversations();
+    } catch (e) {
+      alert('Failed to delete');
+    }
+  }
+</script>
+{% endblock %}

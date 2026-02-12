@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Chatbot with Memory</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            width: 100%;
+            max-width: 700px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            height: 80vh;
+            max-height: 600px;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px 12px 0 0;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+        
+        .header p {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+        
+        .chat-box {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .message {
+            margin: 12px 0;
+            display: flex;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .message.user {
+            justify-content: flex-end;
+        }
+        
+        .message.bot {
+            justify-content: flex-start;
+        }
+        
+        .message-content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 8px;
+            word-wrap: break-word;
+        }
+        
+        .user .message-content {
+            background: #667eea;
+            color: white;
+            border-bottom-right-radius: 2px;
+        }
+        
+        .bot .message-content {
+            background: #f0f0f0;
+            color: #333;
+            border-bottom-left-radius: 2px;
+        }
+        
+        .input-area {
+            padding: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        
+        input[type="text"] {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        
+        input[type="text"]:focus {
+            border-color: #667eea;
+        }
+        
+        button {
+            padding: 12px 24px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+        
+        button:hover {
+            background: #5568d3;
+        }
+        
+        button.clear-btn {
+            background: #ff6b6b;
+            padding: 8px 12px;
+            font-size: 12px;
+        }
+        
+        button.clear-btn:hover {
+            background: #ff5252;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .controls button {
+            flex: 1;
+        }
+        
+        .status {
+            font-size: 12px;
+            color: #666;
+            padding: 8px 20px;
+            border-top: 1px solid #eee;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #667eea;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+            margin: 0 2px;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>🤖 AI Chatbot</h1>
+        <p>Powered by Google Gemini • Persistent Memory • Session-Based</p>
+    </div>
+    
+    <div class="chat-box" id="chat"></div>
+    
+    <div class="status" id="status">
+        Ready • Session-based memory enabled
+    </div>
+    
+    <div class="input-area">
+        <input type="text" id="msg" placeholder="Ask me anything..." autocomplete="off">
+        <div class="controls">
+            <button onclick="sendMsg()">Send</button>
+            <button class="clear-btn" onclick="clearChat()">Clear</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// Load chat history on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadHistory();
+});
+
+// Allow sending message with Enter key
+document.getElementById("msg").addEventListener("keypress", function(e) {
+    if (e.key === "Enter") {
+        sendMsg();
+    }
+});
+
+async function loadHistory() {
+    try {
+        const res = await fetch("/history");
+        const data = await res.json();
+        
+        // Load previous messages from database
+        for (const msg of data.messages) {
+            const role = msg.role === "user" ? "user" : "bot";
+            const content = msg.parts[0];
+            displayMessage(role, content);
+        }
+    } catch (e) {
+        console.error("Error loading history:", e);
+    }
+}
+
+function displayMessage(role, content) {
+    const chatDiv = document.getElementById("chat");
+    const messageDiv = document.createElement("div");
+    messageDiv.className = `message ${role}`;
+    messageDiv.innerHTML = `<div class="message-content">${escapeHtml(content)}</div>`;
+    chatDiv.appendChild(messageDiv);
+    chatDiv.scrollTop = chatDiv.scrollHeight;
+}
+
+async function sendMsg() {
+    let msg = document.getElementById("msg").value.trim();
+    if (!msg) return;
+    
+    // Display user message
+    displayMessage("user", msg);
+    document.getElementById("msg").value = "";
+    
+    // Show loading state
+    const statusEl = document.getElementById("status");
+    const originalStatus = statusEl.textContent;
+    statusEl.innerHTML = "Processing<span class='loading'></span><span class='loading'></span><span class='loading'></span>";
+    
+    try {
+        const res = await fetch("/chat", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({message: msg})
+        });
+        
+        const data = await res.json();
+        
+        if (res.ok) {
+            // Display bot response
+            displayMessage("bot", data.reply);
+            statusEl.textContent = "Ready • Memory saved to database";
+        } else {
+            displayMessage("bot", "Error: " + (data.error || "Unknown error occurred"));
+            statusEl.textContent = "Error occurred";
+        }
+    } catch (error) {
+        displayMessage("bot", "Error: Could not reach server");
+        statusEl.textContent = "Connection error";
+    }
+}
+
+async function clearChat() {
+    if (confirm("Clear all chat history? This cannot be undone.")) {
+        try {
+            const res = await fetch("/clear", {method: "POST"});
+            if (res.ok) {
+                document.getElementById("chat").innerHTML = "";
+                document.getElementById("status").textContent = "Ready • Chat cleared";
+            }
+        } catch (e) {
+            console.error("Error clearing chat:", e);
+        }
+    }
+}
+
+function escapeHtml(text) {
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, m => map[m]);
+}
+</script>
+
+</body>
+</html>

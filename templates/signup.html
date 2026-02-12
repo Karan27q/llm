@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Sign Up - AI Chatbot{% endblock %}
+
+{% block content %}
+<div class="flex-center" style="min-height: 100vh;">
+  <div class="container" style="max-width: 440px;">
+    <div class="glass-panel fade-in" style="padding: 40px;">
+      <div class="text-center mb-4">
+        <h1 style="font-size: 1.8rem; font-weight: 600; margin-bottom: 8px;">Create Account</h1>
+        <p class="text-muted">Join to start chatting with AI</p>
+      </div>
+
+      <form id="signupForm">
+        <div id="message" class="mb-4"></div>
+
+        <div class="input-group">
+          <label for="username">Username</label>
+          <input type="text" id="username" class="form-input" required autocomplete="username"
+            placeholder="Choose a username">
+          <div class="text-sm text-muted mt-1">3-20 characters</div>
+        </div>
+
+        <div class="input-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" class="form-input" required autocomplete="new-password"
+            placeholder="Enter a password">
+          <div class="text-sm text-muted mt-1">Minimum 6 characters</div>
+        </div>
+
+        <div class="input-group">
+          <label for="confirm">Confirm Password</label>
+          <input type="password" id="confirm" class="form-input" required autocomplete="new-password"
+            placeholder="Confirm your password">
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width: 100%;" id="signupBtn">Create Account</button>
+      </form>
+
+      <div class="text-center mt-4">
+        <p class="text-secondary text-sm">
+          Already have an account? <a href="/login" style="color: var(--accent-color); font-weight: 500;">Log in</a>
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.getElementById('signupForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    const confirm = document.getElementById('confirm').value;
+    const messageDiv = document.getElementById('message');
+    const btn = document.getElementById('signupBtn');
+
+    if (username.length < 3 || username.length > 20) {
+      messageDiv.innerHTML = 'Username must be 3-20 characters';
+      messageDiv.style.color = 'var(--danger-color)';
+      return;
+    }
+    if (password.length < 6) {
+      messageDiv.innerHTML = 'Password must be at least 6 characters';
+      messageDiv.style.color = 'var(--danger-color)';
+      return;
+    }
+    if (password !== confirm) {
+      messageDiv.innerHTML = 'Passwords do not match';
+      messageDiv.style.color = 'var(--danger-color)';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span style="animation: pulse 1s infinite">Creating account...</span>';
+    messageDiv.innerHTML = '';
+    messageDiv.style.color = 'var(--text-secondary)';
+
+    try {
+      const res = await fetch('/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        messageDiv.innerHTML = 'Account created! Redirecting...';
+        messageDiv.style.color = 'var(--success-color)';
+        setTimeout(() => window.location.href = '/login', 1000);
+      } else {
+        messageDiv.innerHTML = data.message;
+        messageDiv.style.color = 'var(--danger-color)';
+        btn.disabled = false;
+        btn.innerText = 'Create Account';
+      }
+    } catch (error) {
+      messageDiv.innerHTML = 'Connection error. Please try again.';
+      messageDiv.style.color = 'var(--danger-color)';
+      btn.disabled = false;
+      btn.innerText = 'Create Account';
+    }
+  });
+</script>
+{% endblock %}

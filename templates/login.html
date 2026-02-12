@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Login - AI Chatbot{% endblock %}
+
+{% block content %}
+<div class="flex-center" style="min-height: 100vh;">
+  <div class="container" style="max-width: 440px;">
+    <div class="glass-panel fade-in" style="padding: 40px;">
+      <div class="text-center mb-4">
+        <h1 style="font-size: 1.8rem; font-weight: 600; margin-bottom: 8px;">Welcome Back</h1>
+        <p class="text-muted">Enter your credentials to access your account</p>
+      </div>
+
+      <form id="loginForm">
+        <div id="message" class="mb-4"></div>
+
+        <div class="input-group">
+          <label for="username">Username</label>
+          <input type="text" id="username" class="form-input" required autocomplete="username"
+            placeholder="Enter your username">
+        </div>
+
+        <div class="input-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" class="form-input" required autocomplete="current-password"
+            placeholder="Enter your password">
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width: 100%;" id="loginBtn">Sign In</button>
+      </form>
+
+      <div class="text-center mt-4">
+        <p class="text-secondary text-sm">
+          Don't have an account? <a href="/signup" style="color: var(--accent-color); font-weight: 500;">Sign up</a>
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    const messageDiv = document.getElementById('message');
+    const btn = document.getElementById('loginBtn');
+
+    btn.disabled = true;
+    btn.innerHTML = '<span style="animation: pulse 1s infinite">Logging in...</span>';
+    messageDiv.innerHTML = '';
+    messageDiv.style.color = 'var(--text-secondary)';
+
+    try {
+      const res = await fetch('/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        messageDiv.innerHTML = 'Login successful! Redirecting...';
+        messageDiv.style.color = 'var(--success-color)';
+        setTimeout(() => window.location.href = '/dashboard', 800);
+      } else {
+        messageDiv.innerHTML = data.message;
+        messageDiv.style.color = 'var(--danger-color)';
+        btn.disabled = false;
+        btn.innerText = 'Sign In';
+      }
+    } catch (error) {
+      messageDiv.innerHTML = 'Connection error. Please try again.';
+      messageDiv.style.color = 'var(--danger-color)';
+      btn.disabled = false;
+      btn.innerText = 'Sign In';
+    }
+  });
+</script>
+{% endblock %}
