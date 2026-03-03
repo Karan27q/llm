@@ -23,11 +23,20 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 import os
 import json
+import hashlib
 from datetime import datetime
 from functools import wraps
 from typing import List, Dict, Generator
 
 from db import Database
+
+# LangChain Imports
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langchain_core.output_parsers import StrOutputParser
+
+load_dotenv()
 
 load_dotenv()
 
@@ -35,74 +44,55 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "dev-key-change-in-production")
 
 # Configure Google Gemini API
-genai.configure(api_key=os.getenv("GOOGLE_GEMINI_API_KEY"))
+GOOGLE_API_KEY = os.getenv("GOOGLE_GEMINI_API_KEY")
+if not GOOGLE_API_KEY:
+    raise ValueError("GOOGLE_GEMINI_API_KEY not found in .env file")
 
-model = genai.GenerativeModel(
-    "gemini-2.5-flash",
-    generation_config={
-        "temperature": 0.7,
-        "top_p": 0.9,
-        "max_output_tokens": 4000,
-    }
+# --- LangChain Setup ---
+# Initialize the Chat Model
+llm = ChatGoogleGenerativeAI(
+    model="gemini-pro",
+    google_api_key=GOOGLE_API_KEY,
+    temperature=0.7,
+    convert_system_message_to_human=True # Required for some Gemini versions
 )
 
 # Initialize Database
 db = Database()
 
-# Prompt modes: Different system prompts for different use cases
-PROMPT_MODES = {
-    "assistant": {
-        "name": "Assistant",
-        "system": """You are a helpful, friendly assistant. 
-1. Be clear and concise
-2. Ask clarifying questions if needed
-3. Provide accurate information
-4. Be honest about limitations
-5. Maintain conversation context"""
-    },
-    "tutor": {
-        "name": "Tutor",
-        "system": """You are an expert tutor. Your role is to help users learn:
-1. Explain concepts step-by-step
-2. Use examples and analogies
-3. Ask questions to check understanding
-4. Encourage the learner
-5. Adapt to learning level
-6. Provide practice problems"""
-    },
-    "code_expert": {
-        "name": "Code Expert",
-        "system": """You are an expert programmer. Help with code:
-1. Write clean, efficient code
-2. Follow best practices (SOLID, DRY, KISS)
-3. Explain technical decisions
-4. Suggest optimizations
-5. Review for security and performance
-6. Use appropriate language idioms"""
-    },
-    "creative": {
-        "name": "Creative Writer",
-        "system": """You are a creative writing assistant:
-1. Encourage imaginative thinking
-2. Help with storytelling and character development
-3. Provide writing tips and techniques
-4. Offer constructive feedback
-5. Inspire and motivate
-6. Adapt to different genres/styles"""
-    }
+# Prompt Templates for different modes
+PROMPT_TEMPLATES = {
+    "assistant": ChatPromptTemplate.from_messages([
+        ("system", "You are a helpful, harmless, and honest AI assistant. Your goal is to provide accurate and useful information to the user."),
+        MessagesPlaceholder(variable_name="history"),
+        ("human", "{input}")
+    ]),
+    "tutor": ChatPromptTemplate.from_messages([
+        ("system", "You are an expert tutor. Explain concepts clearly and simply, using analogies when helpful. Verify the user's understanding by asking follow-up questions."),
+        MessagesPlaceholder(variable_name="history"),
+        ("human", "{input}")
+    ]),
+    "code_expert": ChatPromptTemplate.from_messages([
+        ("system", "You are a senior software engineer. Provide efficient, clean, and well-documented code. Explain your logic and potential trade-offs. Always prefer modern best practices."),
+        MessagesPlaceholder(variable_name="history"),
+        ("human", "{input}")
+    ]),
+    "creative": ChatPromptTemplate.from_messages([
+        ("system", "You are a creative writer and storyteller. Be imaginative, descriptive, and engaging. Feel free to use metaphors and vivid imagery."),
+        MessagesPlaceholder(variable_name="history"),
+        ("human", "{input}")
+    ])
 }
 
+# ------------------------------------------------------------------------------
+# HELPER FUNCTIONS
+# ------------------------------------------------------------------------------
 
-# ============================================================================
-# AUTHENTICATION UTILITIES
-# ============================================================================
-
-def hash_password(password: str) -> str:
-    import hashlib
+def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
-def verify_password(stored_hash: str, password: str) -> bool:
-    return stored_hash == hash_password(password)
+def verify_password(stored_hash, password):
+    return stored_hash == hashlib.sha256(password.encode()).hexdigest()
 
 def login_required(f):
     @wraps(f)
@@ -112,45 +102,35 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-
-# ============================================================================
-# MESSAGE MANAGEMENT & CONTEXT WINDOW LOGIC
-# ============================================================================
-
-def estimate_tokens(text: str) -> int:
-    """Rough token estimation (1 token ~ 4 characters)."""
+def estimate_tokens(text):
+    # Simple estimation: 1 token ~= 4 chars
     return len(text) // 4
 
-
-def get_context_window_messages(conversation_id: int, max_tokens: int = 6000) -> List[Dict]:
-    """Smart context window management."""
-    raw_messages = db.get_messages(conversation_id)
+def get_langchain_history(conversation_id):
+    """
+    Retrieves history from DB and converts to LangChain Message objects.
+    We limit context to approx last 20 messages for efficiency, 
+    but for a real app you might use a specific WindowMemory or SummaryMemory.
+    """
+    db_messages = db.get_messages(conversation_id, limit=20)
+    history = []
     
-    # Format for Gemini API
-    all_messages = [{"role": msg["role"], "parts": [msg["content"]]} for msg in raw_messages]
+    # db.get_messages returns newest last. 
+    # Verify order: it usually returns older -> newer
     
-    # Simple strategy: Keep all if fits, otherwise truncate from beginning
-    # In a real app, you'd want smarter summarization
-    total_tokens = sum(estimate_tokens(msg["parts"][0]) for msg in all_messages)
-    
-    if total_tokens <= max_tokens:
-        return all_messages
-        
-    context = []
-    current_tokens = 0
-    for msg in reversed(all_messages):
-        msg_tokens = estimate_tokens(msg["parts"][0])
-        if current_tokens + msg_tokens > max_tokens:
-            break
-        context.insert(0, msg)
-        current_tokens += msg_tokens
+    for msg in db_messages:
+        role = msg['role']
+        content = msg['content']
+        if role == 'user':
+            history.append(HumanMessage(content=content))
+        elif role == 'model':
+            history.append(AIMessage(content=content))
             
-    return context
+    return history
 
-
-# ============================================================================
-# ROUTES: AUTHENTICATION
-# ============================================================================
+# ------------------------------------------------------------------------------
+# ROUTES
+# ------------------------------------------------------------------------------
 
 @app.route("/")
 def index():
@@ -215,10 +195,7 @@ def dashboard():
 def get_conversations():
     try:
         conversations = db.get_user_conversations(session["user_id"])
-        # Convert row objects to dicts if needed, though db.py returns dicts or rows
-        # db.py methods return list of dicts or Row objects. 
-        # Row objects are close enough to dicts for jsonify in recent Flask, 
-        # but let's ensure they are serializable.
+        # Convert row objects to dicts
         return jsonify({"conversations": [dict(c) for c in conversations]})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -231,10 +208,10 @@ def new_conversation():
         data = request.json
         mode = data.get("mode", "assistant")
         
-        if mode not in PROMPT_MODES:
+        if mode not in PROMPT_TEMPLATES:
             return jsonify({"error": "Invalid mode"}), 400
         
-        title = f"{PROMPT_MODES[mode]['name']} - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        title = f"{mode.title()} - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
         conv_id = db.create_conversation(session["user_id"], title, mode)
         
         return jsonify({
@@ -267,7 +244,7 @@ def chat_page(conversation_id):
 
 
 # ============================================================================
-# ROUTES: CHAT API & STREAMING
+# ROUTES: CHAT API & STREAMING (LANGCHAIN)
 # ============================================================================
 
 @app.route("/api/chat/<int:conversation_id>/history", methods=["GET"])
@@ -278,7 +255,6 @@ def get_history(conversation_id):
         return jsonify({"error": "Unauthorized"}), 403
     
     messages = db.get_messages(conversation_id)
-    # Transform for frontend if necessary, or just send as is
     formatted_messages = []
     for msg in messages:
         formatted_messages.append({
@@ -293,7 +269,7 @@ def get_history(conversation_id):
 @login_required
 def stream_chat(conversation_id):
     """
-    Handle chat with streaming response (Server-Sent Events).
+    Handle chat with streaming response using LangChain.
     """
     conversation = db.get_conversation(conversation_id, session["user_id"])
     if not conversation:
@@ -308,29 +284,32 @@ def stream_chat(conversation_id):
     # 1. Save User Message
     db.add_message(conversation_id, "user", user_msg, estimate_tokens(user_msg))
 
-    # 2. Get Context
-    chat_history = get_context_window_messages(conversation_id)
+    # 2. Get Context (LangChain objects)
+    history = get_langchain_history(conversation_id)
+    
+    # Exclude the message we just added (if get_messages includes it, which it likely does).
+    # Actually, we want previous history for the chain input. The user's new input is distinct.
+    # If get_langchain_history includes the latest user message, pop it or separate it.
+    # Our simple implementation retrieves all, including the one we just added.
+    # Correct logic: History = All messages EXCEPT the last one (which is current input).
+    if history and isinstance(history[-1], HumanMessage) and history[-1].content == user_msg:
+        history = history[:-1]
 
-    # 3. Prepare Prompt
-    system_prompt = PROMPT_MODES[conversation["mode"]]["system"]
+    # 3. Create Chain
+    mode = conversation["mode"]
+    prompt = PROMPT_TEMPLATES.get(mode, PROMPT_TEMPLATES["assistant"])
+    
+    # Combine prompt | model | parser
+    chain = prompt | llm | StrOutputParser()
     
     # 4. Stream Response
     def generate():
         full_response = ""
         try:
-            # Build full history for Gemini
-            full_history = []
-            full_history.append({"role": "model", "parts": [system_prompt]})
-            full_history.extend(chat_history)
-            
-            # Streaming call
-            response = model.generate_content(full_history, stream=True)
-            
-            for chunk in response:
-                if chunk.text:
-                    full_response += chunk.text
-                    # Send chunk data
-                    yield f"data: {json.dumps({'content': chunk.text})}\\n\\n"
+            # LangChain .stream() yield chunks
+            for chunk in chain.stream({"history": history, "input": user_msg}):
+                full_response += chunk
+                yield f"data: {json.dumps({'content': chunk})}\\n\\n"
             
             # End of stream
             # 5. Save Model Response
@@ -338,6 +317,7 @@ def stream_chat(conversation_id):
             yield f"data: {json.dumps({'done': True})}\\n\\n"
             
         except Exception as e:
+            print(f"Error generating response: {e}")
             yield f"data: {json.dumps({'error': str(e)})}\\n\\n"
 
     return Response(stream_with_context(generate()), mimetype='text/event-stream')
@@ -349,19 +329,23 @@ def clear_conversation(conversation_id):
     conversation = db.get_conversation(conversation_id, session["user_id"])
     if not conversation:
         return jsonify({"error": "Unauthorized"}), 403
-        
-    db.delete_conversation_messages(conversation_id)
-    return jsonify({"status": "Cleared"})
+    
+    if db.clear_conversation_messages(conversation_id):
+        return jsonify({"success": True})
+    return jsonify({"error": "Failed to clear conversation"}), 500
 
 
 @app.route("/api/modes")
 def get_modes():
     modes = {
-        key: {"name": value["name"]}
-        for key, value in PROMPT_MODES.items()
+        key: {"name": key.replace('_', ' ').title()} # Dynamically generate name from key
+        for key in PROMPT_TEMPLATES.keys()
     }
     return jsonify({"modes": modes})
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # Create DB tables if they don't exist
+    # The Database class _init_db handles this on instantiation, but we ensure it's called
+    db._init_db() 
+    app.run(debug=True, port=5000)

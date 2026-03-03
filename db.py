@@ -163,12 +163,24 @@ class Database:
             )
             conn.commit()
 
-    def get_messages(self, conversation_id: int) -> List[Dict[str, Any]]:
+    def get_messages(self, conversation_id: int, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         with self.get_connection() as conn:
-            cursor = conn.execute(
-                "SELECT * FROM chat_messages WHERE conversation_id = ? ORDER BY timestamp ASC",
-                (conversation_id,)
-            )
+            query = "SELECT * FROM chat_messages WHERE conversation_id = ? ORDER BY timestamp ASC"
+            params = [conversation_id]
+            
+            if limit:
+                # To get the *last* N messages, we need to sort DESC, limit, then re-sort ASC
+                query = f"""
+                    SELECT * FROM (
+                        SELECT * FROM chat_messages 
+                        WHERE conversation_id = ? 
+                        ORDER BY timestamp DESC
+                        LIMIT ?
+                    ) ORDER BY timestamp ASC
+                """
+                params.append(limit)
+                
+            cursor = conn.execute(query, params)
             return [dict(row) for row in cursor.fetchall()]
 
 db = Database()
