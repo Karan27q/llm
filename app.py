@@ -19,7 +19,6 @@ Managed by db.py
 """
 
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, Response, stream_with_context
-import google.generativeai as genai
 from dotenv import load_dotenv
 import os
 import json
@@ -51,10 +50,9 @@ if not GOOGLE_API_KEY:
 # --- LangChain Setup ---
 # Initialize the Chat Model
 llm = ChatGoogleGenerativeAI(
-    model = genai.GenerativeModel("gemini-1.5-flash"),
+    model="gemini-1.5-flash",
     google_api_key=GOOGLE_API_KEY,
-    temperature=0.7,
-    convert_system_message_to_human=True # Required for some Gemini versions
+    temperature=0.7
 )
 
 # Initialize Database
