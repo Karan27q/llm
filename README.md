@@ -4,7 +4,7 @@ A modern, full-stack AI chatbot application featuring persistent memory, multipl
 
 ## � Features
 
-- **Persistent Conversations**: Histories are saved indefinitely in a local SQLite database. By default, it uses `gemini-1.5-flash` for high speed and low latency.
+- **Persistent Conversations**: Histories are saved indefinitely in a local SQLite database. By default, it uses `gemini-2.5-flash` for high speed and low latency.
 - **Multi-Persona System**: Switch specialized modes:
   - 🤖 **Assistant**: General helpful AI.
   - 💻 **Code Expert**: Specialized in programming and debugging.
@@ -19,7 +19,7 @@ A modern, full-stack AI chatbot application featuring persistent memory, multipl
 
 - **Backend**: Python (Flask)
 - **Database**: SQLite (managed via `db.py` context managers)
-- **AI Model**: Google Gemini (`gemini-1.5-flash`)
+- **AI Model**: Google Gemini (`gemini-2.5-flash`)
 - **Frontend**: HTML5, CSS3 (Glassmorphism), Vanilla JS
 - **Dependencies**: `flask`, `google-generativeai`, `python-dotenv`
 
