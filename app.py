@@ -51,7 +51,7 @@ if not GOOGLE_API_KEY:
 # --- LangChain Setup ---
 # Initialize the Chat Model
 llm = ChatGoogleGenerativeAI(
-    model="gemini-pro",
+    model = genai.GenerativeModel("gemini-1.5-flash"),
     google_api_key=GOOGLE_API_KEY,
     temperature=0.7,
     convert_system_message_to_human=True # Required for some Gemini versions
