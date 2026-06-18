@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}Email Verification - AI Chatbot{% endblock %}
+
+{% block content %}
+<div class="flex-center" style="min-height: 100vh;">
+  <div class="container" style="max-width: 480px;">
+    <div class="glass-panel fade-in text-center" style="padding: 40px;">
+      <div style="font-size: 3.5rem; margin-bottom: 20px;">
+        {% if success %}📩{% else %}❌{% endif %}
+      </div>
+      
+      {% if success %}
+        <h1 style="font-size: 1.8rem; font-weight: 600; margin-bottom: 15px; color: var(--success-color);">Email Verified!</h1>
+        <p class="text-secondary mb-4">Your email address has been successfully verified. You can now log in to your account.</p>
+        <a href="/login" class="btn btn-primary" style="width: 100%;">Go to Login</a>
+      {% else %}
+        <h1 style="font-size: 1.8rem; font-weight: 600; margin-bottom: 15px; color: var(--danger-color);">Verification Failed</h1>
+        <p class="text-secondary mb-4">The verification link is invalid, has expired, or has already been used.</p>
+        <a href="/signup" class="btn btn-ghost" style="width: 100%; border: 1px solid var(--border-color);">Back to Sign Up</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

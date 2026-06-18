@@ -22,10 +22,18 @@
         </div>
 
         <div class="input-group">
+          <label for="email">Email Address</label>
+          <input type="email" id="email" class="form-input" required autocomplete="email"
+            placeholder="Enter your email address">
+        </div>
+
+        <div class="input-group">
           <label for="password">Password</label>
           <input type="password" id="password" class="form-input" required autocomplete="new-password"
-            placeholder="Enter a password">
-          <div class="text-sm text-muted mt-1">Minimum 6 characters</div>
+            placeholder="Enter a strong password">
+          <div class="text-sm text-muted mt-1" style="font-size: 0.8rem; line-height: 1.2;">
+            Min 8 chars, at least 1 uppercase, 1 lowercase, 1 number, and 1 special character.
+          </div>
         </div>
 
         <div class="input-group">
@@ -52,6 +60,7 @@
   document.getElementById('signupForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const username = document.getElementById('username').value;
+    const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
     const confirm = document.getElementById('confirm').value;
     const messageDiv = document.getElementById('message');
@@ -62,11 +71,20 @@
       messageDiv.style.color = 'var(--danger-color)';
       return;
     }
-    if (password.length < 6) {
-      messageDiv.innerHTML = 'Password must be at least 6 characters';
+    if (password.length < 8) {
+      messageDiv.innerHTML = 'Password must be at least 8 characters';
       messageDiv.style.color = 'var(--danger-color)';
       return;
     }
+    
+    // Password complexity check
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>]).{8,}$/;
+    if (!passwordRegex.test(password)) {
+      messageDiv.innerHTML = 'Password does not meet complexity requirements.';
+      messageDiv.style.color = 'var(--danger-color)';
+      return;
+    }
+
     if (password !== confirm) {
       messageDiv.innerHTML = 'Passwords do not match';
       messageDiv.style.color = 'var(--danger-color)';
@@ -82,16 +100,27 @@
       const res = await fetch('/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ username, email, password })
       });
       const data = await res.json();
 
       if (res.ok) {
-        messageDiv.innerHTML = 'Account created! Redirecting...';
-        messageDiv.style.color = 'var(--success-color)';
-        setTimeout(() => window.location.href = '/login', 1000);
+        if (data.verification_required) {
+          messageDiv.innerHTML = 'Account created! Please check your verification link to activate and log in.';
+          messageDiv.style.color = 'var(--success-color)';
+          setTimeout(() => window.location.href = '/login', 4000);
+        } else {
+          messageDiv.innerHTML = 'Account created successfully! Redirecting to login...';
+          messageDiv.style.color = 'var(--success-color)';
+          setTimeout(() => window.location.href = '/login', 1200);
+        }
       } else {
-        messageDiv.innerHTML = data.message;
+        // Handle validation errors from Pydantic
+        let errorMsg = data.message;
+        if (Array.isArray(data.message)) {
+          errorMsg = data.message.map(err => `${err.loc.join('.')}: ${err.msg}`).join('<br>');
+        }
+        messageDiv.innerHTML = errorMsg;
         messageDiv.style.color = 'var(--danger-color)';
         btn.disabled = false;
         btn.innerText = 'Create Account';
