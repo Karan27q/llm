@@ -1,5 +1,6 @@
 import os
 import datetime
+import threading
 from flask import Flask, session, request, jsonify
 from app.config import Config
 from app.database import db_session, init_db
@@ -107,3 +108,24 @@ def create_app():
         }), 429
         
     return app
+
+class LazyWSGIApp:
+    """
+    A thread-safe, lazy-loading WSGI application wrapper.
+    Ensures the Flask application is only created on the first request,
+    avoiding premature initialization of databases or Alembic migrations
+    during simple imports (e.g., from command line tools or Alembic cli).
+    """
+    def __init__(self):
+        self._app = None
+        self._lock = threading.Lock()
+
+    def __call__(self, environ, start_response):
+        if self._app is None:
+            with self._lock:
+                if self._app is None:
+                    self._app = create_app()
+        return self._app(environ, start_response)
+
+# Expose 'app' as a package-level variable to satisfy Gunicorn 'app:app' targets
+app = LazyWSGIApp()
